@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/nodes.dart';
 import '../state/doc_controller.dart';
-// Re-export so existing `import '...layers_panel.dart' show showColorPicker;`
-// callers continue to work after the picker was extracted.
-export 'color_picker.dart' show showColorPicker;
+// Re-export the picker entry point so any in-panel swatch that needs it
+// can import from here without reaching deeper.
+export 'color_picker.dart' show openColorPicker;
 
 class LayersPanel extends StatefulWidget {
   final DocController doc;

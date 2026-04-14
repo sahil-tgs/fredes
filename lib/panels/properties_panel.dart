@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/document.dart';
 import '../models/nodes.dart';
 import '../state/doc_controller.dart';
-import 'layers_panel.dart' show showColorPicker;
+import 'color_picker.dart';
 
 class _PageNameRow extends StatefulWidget {
   final String initial;
@@ -406,20 +406,35 @@ class _FillRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(children: [
-      GestureDetector(
-        onTap: () async {
-          final c = await showColorPicker(context, node.fill);
-          if (c != null) doc.updateNode(node.id, (m) => m.fill = c, history: true);
-        },
-        child: Container(
-          width: 26, height: 26,
-          decoration: BoxDecoration(
-            color: node.fill,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: const Color(0xFF3A3A3A)),
+      Builder(builder: (triggerCtx) {
+        return GestureDetector(
+          onTap: () {
+            bool historyPushed = false;
+            openColorPicker(
+              context: context,
+              triggerContext: triggerCtx,
+              initial: node.fill,
+              onChanged: (c) {
+                // Only one undo entry per picker *session*, regardless of how
+                // many live adjustments the user makes.
+                if (!historyPushed) {
+                  doc.pushHistory();
+                  historyPushed = true;
+                }
+                doc.updateNode(node.id, (m) => m.fill = c);
+              },
+            );
+          },
+          child: Container(
+            width: 26, height: 26,
+            decoration: BoxDecoration(
+              color: node.fill,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: const Color(0xFF3A3A3A)),
+            ),
           ),
-        ),
-      ),
+        );
+      }),
       const SizedBox(width: 6),
       Expanded(
         child: Text(
@@ -667,16 +682,22 @@ class _ColorRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(children: [
         SizedBox(width: 56, child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11))),
-        GestureDetector(
-          onTap: () async {
-            final c = await showColorPicker(context, color);
-            if (c != null) onChanged(c);
-          },
-          child: Container(
-            width: 26, height: 26,
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(0xFF3A3A3A))),
-          ),
-        ),
+        Builder(builder: (triggerCtx) {
+          return GestureDetector(
+            onTap: () {
+              openColorPicker(
+                context: context,
+                triggerContext: triggerCtx,
+                initial: color,
+                onChanged: onChanged,
+              );
+            },
+            child: Container(
+              width: 26, height: 26,
+              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4), border: Border.all(color: const Color(0xFF3A3A3A))),
+            ),
+          );
+        }),
         const SizedBox(width: 6),
         Expanded(child: Text(hex, style: const TextStyle(color: Colors.white70, fontSize: 12))),
       ]),
