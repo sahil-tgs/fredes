@@ -81,7 +81,7 @@ cat > "$REPO_ROOT/dist/appcast.xml" <<EOF
       <pubDate>${PUBDATE}</pubDate>
       <enclosure
         url="https://github.com/${REPO_SLUG}/releases/download/v${NEW_VERSION}/Fredes-Setup-${NEW_VERSION}-win-x64.exe"
-        sparkle:version="${NEW_VERSION}"
+        sparkle:version="${NEW_VERSION}+${BUILD_NUM}"
         sparkle:shortVersionString="${NEW_VERSION}"
         length="${INSTALLER_SIZE}"
         type="application/octet-stream" />

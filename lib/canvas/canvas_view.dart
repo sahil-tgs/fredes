@@ -67,18 +67,26 @@ class _CanvasViewState extends State<CanvasView> {
   }
   void _listener() => setState(() {});
 
-  // ── raw pointer handlers (middle-click pan + right-click marquee) ───
+  // ── raw pointer handlers ────────────────────────────────────────────
+  //
+  // Right-button behaviour is split between two modes:
+  //   • tap (no drag) → context menu at cursor, selecting the hit node if
+  //     any. Dispatched on pointer-up so we can tell tap from drag.
+  //   • drag          → rubber-band marquee (unchanged).
+  //
+  // Middle-button is always pan-regardless-of-tool.
+
+  Offset? _rightDownLocal;
+  bool _rightDragged = false;
+
   void _onPointerDown(PointerDownEvent e) {
     if (e.buttons == kMiddleMouseButton) {
       _middlePanStart = e.localPosition - c.pan;
       return;
     }
     if (e.buttons == kSecondaryMouseButton) {
-      final pt = _toPage(e.localPosition);
-      setState(() {
-        _marqueeStartPage = pt;
-        _marqueeEndPage = pt;
-      });
+      _rightDownLocal = e.localPosition;
+      _rightDragged = false;
       return;
     }
   }
@@ -86,6 +94,22 @@ class _CanvasViewState extends State<CanvasView> {
   void _onPointerMove(PointerMoveEvent e) {
     if (_middlePanStart != null && e.buttons == kMiddleMouseButton) {
       c.setPan(e.localPosition - _middlePanStart!);
+      return;
+    }
+    if (_rightDownLocal != null && e.buttons == kSecondaryMouseButton) {
+      // Threshold small movements so a shaky click still shows the menu.
+      final moved = (e.localPosition - _rightDownLocal!).distance;
+      if (moved > 4) {
+        if (!_rightDragged) {
+          _rightDragged = true;
+          setState(() {
+            _marqueeStartPage = _toPage(_rightDownLocal!);
+            _marqueeEndPage = _toPage(e.localPosition);
+          });
+        } else {
+          setState(() => _marqueeEndPage = _toPage(e.localPosition));
+        }
+      }
       return;
     }
     if (_marqueeStartPage != null && e.buttons == kSecondaryMouseButton) {
@@ -99,6 +123,26 @@ class _CanvasViewState extends State<CanvasView> {
       _middlePanStart = null;
       return;
     }
+    // Right-button released without meaningful drag → context menu. If the
+    // user was dragging (marquee), finish that instead and skip the menu.
+    if (_rightDownLocal != null) {
+      final local = _rightDownLocal!;
+      final global = e.position;
+      _rightDownLocal = null;
+      if (_rightDragged) {
+        if (_marqueeStartPage != null && _marqueeEndPage != null) {
+          _commitMarquee();
+          setState(() {
+            _marqueeStartPage = null;
+            _marqueeEndPage = null;
+          });
+        }
+        _rightDragged = false;
+      } else {
+        _showCanvasContextMenu(global, local);
+      }
+      return;
+    }
     if (_marqueeStartPage != null && _marqueeEndPage != null) {
       _commitMarquee();
       setState(() {
@@ -106,6 +150,71 @@ class _CanvasViewState extends State<CanvasView> {
         _marqueeEndPage = null;
       });
     }
+  }
+
+  /// Popup menu for Copy / Cut / Paste / Duplicate / Delete, anchored at the
+  /// right-click screen position. If the click landed on a node that's not
+  /// already selected, we select it first so the menu action targets it.
+  Future<void> _showCanvasContextMenu(Offset globalPos, Offset localPos) async {
+    final page = _toPage(localPos);
+    final hit = c.hitTest(page);
+    if (hit != null && !c.selection.contains(hit.node.id)) {
+      c.toggleSelection(hit.node.id);
+    }
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final overlaySize = (overlay is RenderBox) ? overlay.size : MediaQuery.of(context).size;
+    final hasSelection = c.selection.isNotEmpty;
+    final canPaste = c.hasClipboard;
+
+    final choice = await showMenu<String>(
+      context: context,
+      color: const Color(0xFF252525),
+      position: RelativeRect.fromRect(
+        globalPos & const Size(1, 1),
+        Offset.zero & overlaySize,
+      ),
+      items: <PopupMenuEntry<String>>[
+        _ctxItem('copy', 'Copy', 'Ctrl+C', enabled: hasSelection),
+        _ctxItem('cut', 'Cut', 'Ctrl+X', enabled: hasSelection),
+        _ctxItem('paste', 'Paste', 'Ctrl+V', enabled: canPaste),
+        const PopupMenuDivider(),
+        _ctxItem('duplicate', 'Duplicate', 'Ctrl+D', enabled: hasSelection),
+        _ctxItem('delete', 'Delete', 'Del', enabled: hasSelection),
+        const PopupMenuDivider(),
+        _ctxItem('group', 'Group', 'Ctrl+G', enabled: hasSelection),
+        _ctxItem('ungroup', 'Ungroup', 'Ctrl+Shift+G', enabled: hasSelection),
+      ],
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case 'copy': c.copySelected(); break;
+      case 'cut': c.cutSelected(); break;
+      case 'paste': c.paste(); break;
+      case 'duplicate': c.duplicateSelected(); break;
+      case 'delete': c.deleteSelected(); break;
+      case 'group': c.groupSelected(); break;
+      case 'ungroup': c.ungroupSelected(); break;
+    }
+  }
+
+  PopupMenuEntry<String> _ctxItem(String value, String label, String shortcut,
+      {bool enabled = true}) {
+    return PopupMenuItem<String>(
+      value: value,
+      enabled: enabled,
+      height: 30,
+      child: Row(children: [
+        Expanded(
+          child: Text(label,
+              style: TextStyle(
+                color: enabled ? Colors.white : Colors.white30,
+                fontSize: 12,
+              )),
+        ),
+        if (shortcut.isNotEmpty)
+          Text(shortcut, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+      ]),
+    );
   }
 
   void _commitMarquee() {

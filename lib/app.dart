@@ -179,6 +179,10 @@ class _FredesAppState extends State<FredesApp> {
         const SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true): const _RedoIntent(),
         const SingleActivator(LogicalKeyboardKey.keyY, control: true): const _RedoIntent(),
         const SingleActivator(LogicalKeyboardKey.keyD, control: true): const _DupIntent(),
+        const SingleActivator(LogicalKeyboardKey.keyC, control: true): const _CopyIntent(),
+        const SingleActivator(LogicalKeyboardKey.keyX, control: true): const _CutIntent(),
+        const SingleActivator(LogicalKeyboardKey.keyV, control: true): const _PasteIntent(),
+        const SingleActivator(LogicalKeyboardKey.keyA, control: true): const _SelectAllIntent(),
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): const _SaveIntent(),
         const SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true): const _SaveAsIntent(),
         const SingleActivator(LogicalKeyboardKey.keyO, control: true): const _OpenIntent(),
@@ -200,6 +204,10 @@ class _FredesAppState extends State<FredesApp> {
         _OpenIntent: CallbackAction<_OpenIntent>(onInvoke: (_) { _open(); return null; }),
         _NewIntent: CallbackAction<_NewIntent>(onInvoke: (_) { _new(); return null; }),
         _DelIntent: CallbackAction<_DelIntent>(onInvoke: (_) { doc.deleteSelected(); return null; }),
+        _CopyIntent: CallbackAction<_CopyIntent>(onInvoke: (_) { doc.copySelected(); return null; }),
+        _CutIntent: CallbackAction<_CutIntent>(onInvoke: (_) { doc.cutSelected(); return null; }),
+        _PasteIntent: CallbackAction<_PasteIntent>(onInvoke: (_) { doc.paste(); return null; }),
+        _SelectAllIntent: CallbackAction<_SelectAllIntent>(onInvoke: (_) { doc.selectAll(); return null; }),
         _GroupIntent: CallbackAction<_GroupIntent>(onInvoke: (_) { doc.groupSelected(); return null; }),
         _UngroupIntent: CallbackAction<_UngroupIntent>(onInvoke: (_) { doc.ungroupSelected(); return null; }),
         _ZoomInIntent: CallbackAction<_ZoomInIntent>(onInvoke: (_) { doc.setZoom(doc.zoom * 1.2); return null; }),
@@ -328,6 +336,10 @@ class _SaveAsIntent extends Intent { const _SaveAsIntent(); }
 class _OpenIntent extends Intent { const _OpenIntent(); }
 class _NewIntent extends Intent { const _NewIntent(); }
 class _DelIntent extends Intent { const _DelIntent(); }
+class _CopyIntent extends Intent { const _CopyIntent(); }
+class _CutIntent extends Intent { const _CutIntent(); }
+class _PasteIntent extends Intent { const _PasteIntent(); }
+class _SelectAllIntent extends Intent { const _SelectAllIntent(); }
 class _GroupIntent extends Intent { const _GroupIntent(); }
 class _UngroupIntent extends Intent { const _UngroupIntent(); }
 class _ZoomInIntent extends Intent { const _ZoomInIntent(); }
@@ -363,8 +375,12 @@ class _MenuBar extends StatelessWidget {
         _menu(context, 'Edit', [
           _MenuItem('Undo', 'Ctrl+Z', () => doc.undo()),
           _MenuItem('Redo', 'Ctrl+Shift+Z', () => doc.redo()),
+          _MenuItem('Cut', 'Ctrl+X', () => doc.cutSelected()),
+          _MenuItem('Copy', 'Ctrl+C', () => doc.copySelected()),
+          _MenuItem('Paste', 'Ctrl+V', () => doc.paste()),
           _MenuItem('Duplicate', 'Ctrl+D', () => doc.duplicateSelected()),
           _MenuItem('Delete', 'Del', () => doc.deleteSelected()),
+          _MenuItem('Select All', 'Ctrl+A', () => doc.selectAll()),
           _MenuItem('Group Selection', 'Ctrl+G', () => doc.groupSelected()),
           _MenuItem('Ungroup', 'Ctrl+Shift+G', () => doc.ungroupSelected()),
           _MenuItem('Frame Selection', '', () => doc.frameSelected()),

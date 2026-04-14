@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui' show Color, Offset, Rect;
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import '../models/document.dart';
 import '../models/nodes.dart';
 
@@ -276,6 +277,109 @@ class DocController extends ChangeNotifier {
     for (final n in siblings) {
       if (isContainer(n.type)) _removeDescendants(n.children, ids);
     }
+  }
+
+  // ── clipboard ────────────────────────────────────────────────────────
+  //
+  // The clipboard holds JSON snapshots of fully-resolved nodes (each with
+  // absolute page-space position, so paste works across pages and into any
+  // container). It lives on the controller so switching the active page
+  // doesn't clear it, which lets the user copy on one page and paste on
+  // another — cross-page paste is a first-class operation.
+
+  /// Each entry is a node's JSON map with an extra `_absX` / `_absY` field
+  /// carrying the node's absolute top-left at copy time.
+  final List<Map<String, dynamic>> _clipboard = [];
+
+  bool get hasClipboard => _clipboard.isNotEmpty;
+
+  /// Snapshot the current selection into the clipboard. Does not touch the
+  /// document — pure read.
+  void copySelected() {
+    if (_selection.isEmpty) return;
+    _clipboard.clear();
+    // Iterate in page-document order (back-to-front) so paste ordering is
+    // predictable.
+    for (final n in _flattenSelected()) {
+      final r = _find(n.id);
+      if (r == null) continue;
+      final json = r.node.toJson();
+      // absOrigin from _walk is the *child's* own origin in page space.
+      json['_absX'] = r.absOrigin.dx;
+      json['_absY'] = r.absOrigin.dy;
+      _clipboard.add(json);
+    }
+    notifyListeners(); // update menu-item enabled state
+  }
+
+  void cutSelected() {
+    if (_selection.isEmpty) return;
+    copySelected();
+    deleteSelected();
+  }
+
+  /// Paste the clipboard into the active page at the root level. Pasted
+  /// nodes keep their relative arrangement and are offset slightly so they
+  /// don't land exactly on top of the original (unless the user copied from
+  /// a different page, in which case we preserve absolute coords).
+  void paste({bool nudge = true}) {
+    if (_clipboard.isEmpty) return;
+    pushHistory();
+    final newIds = <String>[];
+    for (final json in _clipboard) {
+      // Deep-copy via round-trip + regenerate ids recursively so pasting
+      // twice doesn't create duplicate ids in the tree.
+      final copy = _deepCloneJson(json);
+      _regenerateIds(copy);
+      final absX = (copy['_absX'] as num?)?.toDouble() ?? 0;
+      final absY = (copy['_absY'] as num?)?.toDouble() ?? 0;
+      copy.remove('_absX');
+      copy.remove('_absY');
+      final node = FredesNode.fromJson(copy);
+      node.x = absX + (nudge ? 20 : 0);
+      node.y = absY + (nudge ? 20 : 0);
+      activePage.nodes.add(node);
+      newIds.add(node.id);
+    }
+    _selection..clear()..addAll(newIds);
+    _dirty = true;
+    notifyListeners();
+  }
+
+  /// Recursively walk a JSON node map and replace every `id` with a fresh
+  /// UUID. Used on paste so the pasted subtree is genuinely new.
+  void _regenerateIds(Map<String, dynamic> json) {
+    json['id'] = const Uuid().v4();
+    final kids = json['children'];
+    if (kids is List) {
+      for (final c in kids) {
+        if (c is Map<String, dynamic>) _regenerateIds(c);
+      }
+    }
+  }
+
+  Map<String, dynamic> _deepCloneJson(Map<String, dynamic> src) {
+    return jsonDecode(jsonEncode(src)) as Map<String, dynamic>;
+  }
+
+  /// Return selected nodes in page order (back-to-front across the whole
+  /// tree). Used for deterministic clipboard ordering.
+  List<FredesNode> _flattenSelected() {
+    final out = <FredesNode>[];
+    _walk(activePage.nodes, (_, n, __) {
+      if (_selection.contains(n.id)) out.add(n);
+      return false;
+    });
+    return out;
+  }
+
+  /// Select every node on the active page (top-level only — children of
+  /// frames/groups stay unselected unless their container is).
+  void selectAll() {
+    final ids = activePage.nodes.map((n) => n.id).toSet();
+    if (ids.isEmpty) return;
+    _selection..clear()..addAll(ids);
+    notifyListeners();
   }
 
   void duplicateSelected() {
