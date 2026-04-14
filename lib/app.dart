@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'package:auto_updater/auto_updater.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'canvas/canvas_view.dart';
@@ -114,6 +116,21 @@ class _FredesAppState extends State<FredesApp> {
     final path = loc.path.endsWith('.svg') ? loc.path : '${loc.path}.svg';
     await File(path).writeAsString(pageToSvg(doc.activePage));
     _toast('Exported $path');
+  }
+
+  /// Manual "Check for Updates…" handler. `inBackground: false` asks the
+  /// WinSparkle UI to surface a dialog even when we're already up-to-date,
+  /// so the user gets explicit feedback. No-op on non-Windows platforms.
+  Future<void> _checkForUpdates() async {
+    if (kIsWeb || !Platform.isWindows) {
+      _toast('Auto-update is only available on Windows builds.');
+      return;
+    }
+    try {
+      await autoUpdater.checkForUpdates(inBackground: false);
+    } catch (e) {
+      _toast('Update check failed: $e');
+    }
   }
 
   // ── helpers ──────────────────────────────────────────────────────────
@@ -234,7 +251,15 @@ class _FredesAppState extends State<FredesApp> {
                 body: Column(
                   children: [
                     Row(children: [
-                      _MenuBar(onNew: _new, onOpen: _open, onSave: _save, onSaveAs: _saveAs, onExportSvg: _exportSvg, doc: doc),
+                      _MenuBar(
+                        onNew: _new,
+                        onOpen: _open,
+                        onSave: _save,
+                        onSaveAs: _saveAs,
+                        onExportSvg: _exportSvg,
+                        onCheckForUpdates: _checkForUpdates,
+                        doc: doc,
+                      ),
                     ]),
                     FredesToolbar(doc: doc),
                     Expanded(
@@ -310,9 +335,17 @@ class _ZoomOutIntent extends Intent { const _ZoomOutIntent(); }
 class _ZoomResetIntent extends Intent { const _ZoomResetIntent(); }
 
 class _MenuBar extends StatelessWidget {
-  final VoidCallback onNew, onOpen, onSave, onSaveAs, onExportSvg;
+  final VoidCallback onNew, onOpen, onSave, onSaveAs, onExportSvg, onCheckForUpdates;
   final DocController doc;
-  const _MenuBar({required this.onNew, required this.onOpen, required this.onSave, required this.onSaveAs, required this.onExportSvg, required this.doc});
+  const _MenuBar({
+    required this.onNew,
+    required this.onOpen,
+    required this.onSave,
+    required this.onSaveAs,
+    required this.onExportSvg,
+    required this.onCheckForUpdates,
+    required this.doc,
+  });
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -346,6 +379,7 @@ class _MenuBar extends StatelessWidget {
           _MenuItem('Cloud Sync',     '', () => doc.setMode(AppMode.cloud)),
         ]),
         _menu(context, 'Help', [
+          _MenuItem('Check for Updates…', '', onCheckForUpdates),
           _MenuItem('About Fredes', '', () => showAboutDialog(
                 context: context,
                 applicationName: 'Fredes',
