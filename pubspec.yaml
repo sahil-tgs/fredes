@@ -1,7 +1,7 @@
 name: fredes
 description: Free & open-source Figma alternative — offline-first vector design tool.
 publish_to: 'none'
-version: 0.1.8+9
+version: 0.1.9+10
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
