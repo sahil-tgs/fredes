@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/nodes.dart';
 import '../state/doc_controller.dart';
+// Re-export so existing `import '...layers_panel.dart' show showColorPicker;`
+// callers continue to work after the picker was extracted.
+export 'color_picker.dart' show showColorPicker;
 
 class LayersPanel extends StatefulWidget {
   final DocController doc;
@@ -577,62 +580,6 @@ class _DropLine extends StatelessWidget {
       );
 }
 
-/// Tiny color picker (preset swatches + hex). No deps.
-Future<Color?> showColorPicker(BuildContext context, Color initial) async {
-  final controller = TextEditingController(text: '#${initial.value.toRadixString(16).padLeft(8, '0').substring(2)}');
-  Color current = initial;
-  const swatches = <int>[
-    0xFF000000, 0xFF111111, 0xFF374151, 0xFF6B7280, 0xFF9CA3AF, 0xFFD1D5DB, 0xFFF3F4F6, 0xFFFFFFFF,
-    0xFFEF4444, 0xFFF97316, 0xFFEAB308, 0xFF22C55E, 0xFF14B8A6, 0xFF3B82F6, 0xFF8B5CF6, 0xFFEC4899,
-  ];
-  return showDialog<Color>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
-      return AlertDialog(
-        backgroundColor: const Color(0xFF252525),
-        title: const Text('Color', style: TextStyle(color: Colors.white)),
-        content: SizedBox(
-          width: 260,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final c in swatches)
-                GestureDetector(
-                  onTap: () => setS(() {
-                    current = Color(c);
-                    controller.text = '#${c.toRadixString(16).padLeft(8, '0').substring(2)}';
-                  }),
-                  child: Container(
-                    width: 24, height: 24,
-                    decoration: BoxDecoration(color: Color(c), borderRadius: BorderRadius.circular(3), border: Border.all(color: Colors.white24)),
-                  ),
-                )
-            ]),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(labelText: 'Hex', labelStyle: TextStyle(color: Colors.white70)),
-              onChanged: (v) {
-                try {
-                  current = hexToColor(v);
-                  setS(() {});
-                } catch (_) {}
-              },
-            ),
-            const SizedBox(height: 8),
-            Row(children: [
-              Container(width: 24, height: 24, color: current),
-              const SizedBox(width: 8),
-              Text('#${current.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
-                  style: const TextStyle(color: Colors.white70)),
-            ]),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, current), child: const Text('Apply')),
-        ],
-      );
-    }),
-  );
-}
+// Color picker moved to color_picker.dart. Re-exported below for callers
+// that already import it from this file.
+
