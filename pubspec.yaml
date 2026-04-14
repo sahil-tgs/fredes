@@ -15,10 +15,34 @@ dependencies:
   file_selector: ^1.0.3
   web_socket_channel: ^3.0.1
   collection: ^1.18.0
-  auto_updater: ^1.0.0
 
 dev_dependencies:
   flutter_lints: ^4.0.0
+  msix: ^3.16.7
 
 flutter:
   uses-material-design: true
+
+# MSIX packaging — produces a signed .msix that Windows installs natively
+# and auto-updates from the URL below via the generated .appinstaller manifest.
+# Signed with the self-signed cert at C:\fredes-signing\Fredes.pfx on the
+# release machine; user imports the public .cer into LocalMachine\TrustedPeople
+# once to trust the signature.
+msix_config:
+  display_name: Fredes
+  publisher_display_name: sahil-tgs
+  publisher: CN=sahil-tgs, O=Fredes, C=IN
+  identity_name: com.sahiltgs.fredes
+  logo_path: windows/runner/resources/app_icon.ico
+  architecture: x64
+  capabilities: ""
+  certificate_path: C:/fredes-signing/Fredes.pfx
+  certificate_password: fredes-signing-pw
+  install_certificate: false
+  app_installer:
+    publish_folder_path: build/windows/x64/runner/Release/msix-publish
+    hours_between_update_checks: 1
+    automatic_background_task: true
+    update_blocks_activation: false
+    show_prompt: false
+    force_update_from_any_version: false

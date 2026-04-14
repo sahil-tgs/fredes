@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
-# Fredes release pipeline — runs from WSL in /home/lol/freegama/fredes.
+# Fredes release pipeline (MSIX edition) — runs from WSL in /home/lol/freegama/fredes.
 # Commits, tags, releases all happen in this WSL repo (source of truth).
-# Build happens in a throwaway Windows workdir (required for MSVC).
+# Build + MSIX packaging happens on the Windows side (required for MSVC + makeappx).
 #
-# Usage: bash scripts/release.sh <new_version>     e.g.  bash scripts/release.sh 0.1.7
+# Usage: bash scripts/release.sh <new_version>     e.g.  bash scripts/release.sh 0.1.12
 # Requires (in WSL): git, gh (authenticated as sahil-tgs), rsync, python3.
-# Requires (on Windows): Flutter at C:\src\flutter, Inno Setup 6 in %LOCALAPPDATA%\Programs.
+# Requires (on Windows): Flutter at C:\src\flutter, Fredes signing cert at
+#   C:\fredes-signing\Fredes.pfx, cert installed to LocalMachine\TrustedPeople
+#   (one-time admin step — see C:\fredes-signing\install-cert-AS-ADMIN.ps1).
 
 set -euo pipefail
 
 NEW_VERSION="${1:-}"
 if [[ -z "$NEW_VERSION" ]]; then
-  echo "Usage: $0 <new_version>  (e.g. 0.1.7)"; exit 1
+  echo "Usage: $0 <new_version>  (e.g. 0.1.12)"; exit 1
 fi
 
 REPO_ROOT="/home/lol/freegama/fredes"
 WIN_WORKDIR_WIN='C:\fredes-build'
 WIN_WORKDIR_WSL="/mnt/c/fredes-build"
 FLUTTER_WIN='C:\src\flutter\bin\flutter.bat'
-ISCC_WIN='C:\Users\sahil\AppData\Local\Programs\Inno Setup 6\ISCC.exe'
+DART_WIN='C:\src\flutter\bin\dart.bat'
 REPO_SLUG="sahil-tgs/fredes"
 
 cd "$REPO_ROOT"
@@ -49,64 +51,61 @@ rsync -a --delete \
   --exclude='dist/' \
   "$REPO_ROOT"/ "$WIN_WORKDIR_WSL"/
 
-echo "=== [4/8] flutter build in Windows workdir ==="
+echo "=== [4/8] flutter build ==="
 cmd.exe /c "cd /d ${WIN_WORKDIR_WIN} && ${FLUTTER_WIN} pub get" | tail -3
 cmd.exe /c "cd /d ${WIN_WORKDIR_WIN} && ${FLUTTER_WIN} build windows --release" | tail -5
 
-echo "=== [5/8] compile installer ==="
-powershell.exe -NoProfile -Command "& '${ISCC_WIN}' /DMyAppVersion=${NEW_VERSION} '${WIN_WORKDIR_WIN}\\windows\\installer\\fredes.iss'" | tail -5
+echo "=== [5/8] msix package + appinstaller ==="
+# msix:create reads msix_config from pubspec.yaml, signs with C:\fredes-signing\Fredes.pfx,
+# and emits fredes.msix to build/windows/x64/runner/Release/.
+cmd.exe /c "cd /d ${WIN_WORKDIR_WIN} && ${DART_WIN} run msix:create --build-windows false" | tail -5
 
-INSTALLER_WSL="${WIN_WORKDIR_WSL}/dist/Fredes-Setup-${NEW_VERSION}-win-x64.exe"
-test -f "$INSTALLER_WSL" || { echo "installer missing: $INSTALLER_WSL"; exit 1; }
+MSIX_WSL="${WIN_WORKDIR_WSL}/build/windows/x64/runner/Release/fredes.msix"
+test -f "$MSIX_WSL" || { echo "msix missing: $MSIX_WSL"; exit 1; }
 
-# bring installer back into WSL repo dist/ (gitignored)
 mkdir -p "$REPO_ROOT/dist"
-cp "$INSTALLER_WSL" "$REPO_ROOT/dist/"
-INSTALLER="$REPO_ROOT/dist/Fredes-Setup-${NEW_VERSION}-win-x64.exe"
-ls -lh "$INSTALLER"
+MSIX_OUT="$REPO_ROOT/dist/fredes_${NEW_VERSION}.0_x64.msix"
+cp "$MSIX_WSL" "$MSIX_OUT"
 
-echo "=== [6/8] generate appcast.xml ==="
-INSTALLER_SIZE=$(stat -c%s "$INSTALLER")
-PUBDATE=$(date -Ru)
-cat > "$REPO_ROOT/dist/appcast.xml" <<EOF
+# Hand-generate Fredes.appinstaller with GitHub-hosted URIs.
+# Windows polls MainPackage Uri at HoursBetweenUpdateChecks cadence; when Version
+# here exceeds the installed version, it auto-downloads + installs the .msix.
+APPINSTALLER_URL="https://github.com/${REPO_SLUG}/releases/latest/download/Fredes.appinstaller"
+MSIX_URL="https://github.com/${REPO_SLUG}/releases/download/v${NEW_VERSION}/fredes_${NEW_VERSION}.0_x64.msix"
+cat > "$REPO_ROOT/dist/Fredes.appinstaller" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-  <channel>
-    <title>Fredes</title>
-    <link>https://github.com/${REPO_SLUG}</link>
-    <description>Fredes release feed</description>
-    <language>en</language>
-    <item>
-      <title>Version ${NEW_VERSION}</title>
-      <pubDate>${PUBDATE}</pubDate>
-      <enclosure
-        url="https://github.com/${REPO_SLUG}/releases/download/v${NEW_VERSION}/Fredes-Setup-${NEW_VERSION}-win-x64.exe"
-        sparkle:version="${NEW_VERSION}"
-        sparkle:shortVersionString="${NEW_VERSION}"
-        length="${INSTALLER_SIZE}"
-        type="application/octet-stream" />
-      <sparkle:minimumSystemVersion>10.0.17763</sparkle:minimumSystemVersion>
-    </item>
-  </channel>
-</rss>
+<AppInstaller xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
+    Uri="${APPINSTALLER_URL}" Version="${NEW_VERSION}.0">
+  <MainPackage Name="com.sahiltgs.fredes" Version="${NEW_VERSION}.0"
+    Publisher="CN=sahil-tgs, O=Fredes, C=IN"
+    Uri="${MSIX_URL}"
+    ProcessorArchitecture="x64" />
+  <UpdateSettings>
+    <OnLaunch HoursBetweenUpdateChecks="1" UpdateBlocksActivation="false" ShowPrompt="false" />
+    <AutomaticBackgroundTask />
+  </UpdateSettings>
+</AppInstaller>
 EOF
+ls -lh "$REPO_ROOT/dist/"
 
-echo "=== [7/8] commit + tag + push ==="
+echo "=== [6/8] commit + tag + push ==="
 git add pubspec.yaml
 git diff --cached --quiet || git commit -m "release: v${NEW_VERSION}"
 git tag -f "v${NEW_VERSION}"
 git push origin main --tags --force-with-lease
 
-echo "=== [8/8] gh release ==="
+echo "=== [7/8] gh release ==="
 gh release delete "v${NEW_VERSION}" --yes --cleanup-tag 2>/dev/null || true
-# re-tag after cleanup-tag may have removed it
 git tag -f "v${NEW_VERSION}"
 git push origin "v${NEW_VERSION}" --force
 gh release create "v${NEW_VERSION}" \
-  "$INSTALLER" "$REPO_ROOT/dist/appcast.xml" \
+  "$MSIX_OUT" \
+  "$REPO_ROOT/dist/Fredes.appinstaller" \
   --repo "${REPO_SLUG}" \
   --title "Fredes v${NEW_VERSION}" \
-  --notes "Auto-update release for v${NEW_VERSION}." \
+  --notes "MSIX release v${NEW_VERSION}. Windows auto-updates via Fredes.appinstaller." \
   --latest
 
-echo "=== done. release: https://github.com/${REPO_SLUG}/releases/tag/v${NEW_VERSION} ==="
+echo "=== [8/8] done ==="
+echo "Release: https://github.com/${REPO_SLUG}/releases/tag/v${NEW_VERSION}"
+echo "AppInstaller URL (Windows polls this): ${APPINSTALLER_URL}"
