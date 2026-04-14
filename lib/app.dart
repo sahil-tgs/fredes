@@ -141,13 +141,20 @@ class _FredesAppState extends State<FredesApp> {
 
   // ── Shortcuts ────────────────────────────────────────────────────────
   Map<ShortcutActivator, Intent> _shortcuts() => {
+        // Tool shortcuts — per user convention:
+        //   V or F → Select (merged: "free selection / no tool state")
+        //   P or H → Pan
+        //   R → Rectangle, O → Ellipse, L → Line, T → Text
+        //   A → Frame (artboard), N → Pen (free draw) — reassigned off F/P.
         const SingleActivator(LogicalKeyboardKey.keyV): const _ToolIntent(Tool.select),
+        const SingleActivator(LogicalKeyboardKey.keyF): const _ToolIntent(Tool.select),
+        const SingleActivator(LogicalKeyboardKey.keyP): const _ToolIntent(Tool.hand),
         const SingleActivator(LogicalKeyboardKey.keyH): const _ToolIntent(Tool.hand),
-        const SingleActivator(LogicalKeyboardKey.keyF): const _ToolIntent(Tool.frame),
+        const SingleActivator(LogicalKeyboardKey.keyA): const _ToolIntent(Tool.frame),
         const SingleActivator(LogicalKeyboardKey.keyR): const _ToolIntent(Tool.rect),
         const SingleActivator(LogicalKeyboardKey.keyO): const _ToolIntent(Tool.ellipse),
         const SingleActivator(LogicalKeyboardKey.keyL): const _ToolIntent(Tool.line),
-        const SingleActivator(LogicalKeyboardKey.keyP): const _ToolIntent(Tool.pen),
+        const SingleActivator(LogicalKeyboardKey.keyN): const _ToolIntent(Tool.pen),
         const SingleActivator(LogicalKeyboardKey.keyT): const _ToolIntent(Tool.text),
         const SingleActivator(LogicalKeyboardKey.keyG, control: true): const _GroupIntent(),
         const SingleActivator(LogicalKeyboardKey.keyG, control: true, shift: true): const _UngroupIntent(),
@@ -202,22 +209,44 @@ class _FredesAppState extends State<FredesApp> {
           child: Focus(
             focusNode: _rootFocus,
             autofocus: true,
-            child: Scaffold(
-              body: Column(
-                children: [
-                  Row(children: [
-                    _MenuBar(onNew: _new, onOpen: _open, onSave: _save, onSaveAs: _saveAs, onExportSvg: _exportSvg, doc: doc),
-                  ]),
-                  FredesToolbar(doc: doc),
-                  Expanded(
-                    child: Row(children: [
-                      LayersPanel(doc: doc),
-                      Expanded(child: CanvasView(doc: doc)),
-                      PropertiesPanel(doc: doc),
+            // Whenever a pointer-down happens anywhere in the app frame, pull
+            // focus back to the root. Without this, clicking a TextField (or
+            // even a dropdown) transfers primary focus away, and after it
+            // closes no one re-assumes focus — so keyboard shortcuts
+            // silently die. We only snap back when the event didn't land on
+            // a text input, so active typing isn't interrupted.
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) {
+                // Defer: at pointer-down a TextField hasn't yet claimed
+                // focus, so checking _textInputHasFocus() here would race
+                // and we'd stomp on text editing. Post-frame the focus has
+                // settled — if it landed on a text input we back off, else
+                // we restore focus to root so shortcuts keep firing.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  if (!_TextAwareShortcutManager._textInputHasFocus()) {
+                    _rootFocus.requestFocus();
+                  }
+                });
+              },
+              child: Scaffold(
+                body: Column(
+                  children: [
+                    Row(children: [
+                      _MenuBar(onNew: _new, onOpen: _open, onSave: _save, onSaveAs: _saveAs, onExportSvg: _exportSvg, doc: doc),
                     ]),
-                  ),
-                  _StatusBar(doc: doc),
-                ],
+                    FredesToolbar(doc: doc),
+                    Expanded(
+                      child: Row(children: [
+                        LayersPanel(doc: doc),
+                        Expanded(child: CanvasView(doc: doc)),
+                        PropertiesPanel(doc: doc),
+                      ]),
+                    ),
+                    _StatusBar(doc: doc),
+                  ],
+                ),
               ),
             ),
           ),

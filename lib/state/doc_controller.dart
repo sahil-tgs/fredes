@@ -479,6 +479,75 @@ class DocController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Move [draggedId] into [toParentId] (null = root of the active page) at
+  /// the given child [index] (clamped to the bounds of the target list).
+  /// Absolute position is preserved: the moved node's local (x, y) is
+  /// rewritten in the new parent's coordinate space.
+  ///
+  /// No-ops and guards:
+  /// * Dropping a node into itself or any of its descendants would create a
+  ///   cycle — refused silently.
+  /// * Reparenting onto the same spot in the same parent is a no-op.
+  bool reparent(String draggedId, {String? toParentId, int index = -1}) {
+    final r = _find(draggedId);
+    if (r == null) return false;
+    if (toParentId == draggedId) return false;
+    if (toParentId != null && _isDescendant(r.node, toParentId)) return false;
+
+    // Resolve target list + its absolute origin.
+    final List<FredesNode> targetSibs;
+    final Offset targetAbsOrigin;
+    if (toParentId == null) {
+      targetSibs = activePage.nodes;
+      targetAbsOrigin = Offset.zero;
+    } else {
+      final tr = _find(toParentId);
+      if (tr == null || !isContainer(tr.node.type)) return false;
+      targetSibs = tr.node.children;
+      // Absolute origin of a node = origin of its *contents*, which is what
+      // we want for reparenting coordinate math.
+      targetAbsOrigin = tr.absOrigin;
+    }
+
+    final curIdx = r.siblings.indexOf(r.node);
+    // Same parent + same index → no-op.
+    if (identical(targetSibs, r.siblings)) {
+      final clamped = index < 0 ? targetSibs.length - 1 : index.clamp(0, targetSibs.length - 1);
+      if (clamped == curIdx) return false;
+    }
+
+    pushHistory();
+
+    // Capture absolute top-left of the node *before* removal.
+    final draggedAbsTopLeft = r.absOrigin;
+
+    r.siblings.removeAt(curIdx);
+
+    // Adjusting index when we removed from the same list and the removal was
+    // before the insertion point shifts it down by one.
+    int insertAt = (index < 0) ? targetSibs.length : index;
+    if (identical(targetSibs, r.siblings) && curIdx < insertAt) insertAt -= 1;
+    insertAt = insertAt.clamp(0, targetSibs.length);
+
+    // Convert absolute top-left to new parent-local coords.
+    r.node.x = draggedAbsTopLeft.dx - targetAbsOrigin.dx;
+    r.node.y = draggedAbsTopLeft.dy - targetAbsOrigin.dy;
+
+    targetSibs.insert(insertAt, r.node);
+    _dirty = true;
+    notifyListeners();
+    return true;
+  }
+
+  bool _isDescendant(FredesNode ancestor, String candidateId) {
+    if (!isContainer(ancestor.type)) return false;
+    for (final c in ancestor.children) {
+      if (c.id == candidateId) return true;
+      if (_isDescendant(c, candidateId)) return true;
+    }
+    return false;
+  }
+
   /// Public re-emit so views can repaint after direct mutations.
   void touch() => notifyListeners();
 

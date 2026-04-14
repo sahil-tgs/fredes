@@ -22,14 +22,14 @@ class FredesToolbar extends StatelessWidget {
             const _Brand(),
             const SizedBox(width: 12),
             for (final t in const [
-              (Tool.select, 'Select', '↖', 'V'),
-              (Tool.hand,   'Pan',    '✋', 'H'),
-              (Tool.frame,  'Frame',  '🖽', 'F'),
+              (Tool.select, 'Select',    '↖', 'V / F'),
+              (Tool.hand,   'Pan',       '✋', 'P / H'),
+              (Tool.frame,  'Frame',     '🖽', 'A'),
               (Tool.rect,   'Rectangle', '▭', 'R'),
-              (Tool.ellipse,'Ellipse',  '◯', 'O'),
-              (Tool.line,   'Line',     '／', 'L'),
-              (Tool.pen,    'Pen',      '✎', 'P'),
-              (Tool.text,   'Text',     'T', 'T'),
+              (Tool.ellipse,'Ellipse',   '◯', 'O'),
+              (Tool.line,   'Line',      '／', 'L'),
+              (Tool.pen,    'Pen',       '✎', 'N'),
+              (Tool.text,   'Text',      'T', 'T'),
             ])
               _ToolButton(
                 tool: t.$1,
